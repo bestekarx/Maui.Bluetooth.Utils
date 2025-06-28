@@ -1,6 +1,5 @@
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;
-using Microsoft.Extensions.DependencyInjection;
 using TextAlignment = Maui.Bluetooth.Utils.Shared.Models.TextAlignment;
 
 namespace Maui.Bluetooth.Utils.Shared.Services
@@ -13,6 +12,7 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         private readonly IBluetoothService _bluetoothService;
         private readonly IServiceProvider _serviceProvider;
         private IPrinterService? _currentPrinterService;
+        private IZebraPrinterService? _currentZebraService;
         private BluetoothDeviceModel? _connectedDevice;
         private bool _disposed;
 
@@ -30,6 +30,11 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         /// Event fired when print job status changes
         /// </summary>
         public event EventHandler<PrintJobStatusChangedEventArgs>? PrintJobStatusChanged;
+
+        /// <summary>
+        /// Event fired when printer status changes (Zebra printers)
+        /// </summary>
+        public event EventHandler<PrinterStatusChangedEventArgs>? PrinterStatusChanged;
 
         public BluetoothPrinterManager(IBluetoothService bluetoothService, IServiceProvider serviceProvider)
         {
@@ -98,15 +103,22 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 _connectedDevice = device;
 
                 // Create appropriate printer service based on device type
-                _currentPrinterService = CreatePrinterService(device.PrinterType);
-
-                // Initialize printer service
-                if (_currentPrinterService != null)
+                if (device.PrinterType == PrinterType.Zebra)
                 {
-                    await _currentPrinterService.InitializeAsync();
-                    
-                    // Subscribe to print job events
-                    _currentPrinterService.PrintJobStatusChanged += OnPrintJobStatusChanged;
+                    _currentZebraService = CreateZebraPrinterService();
+                    if (_currentZebraService != null)
+                    {
+                        _currentZebraService.PrinterStatusChanged += OnPrinterStatusChanged;
+                    }
+                }
+                else
+                {
+                    _currentPrinterService = CreatePrinterService(device.PrinterType);
+                    if (_currentPrinterService != null)
+                    {
+                        await _currentPrinterService.InitializeAsync();
+                        _currentPrinterService.PrintJobStatusChanged += OnPrintJobStatusChanged;
+                    }
                 }
 
                 return true;
@@ -136,6 +148,12 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                     _currentPrinterService = null;
                 }
 
+                if (_currentZebraService != null)
+                {
+                    _currentZebraService.PrinterStatusChanged -= OnPrinterStatusChanged;
+                    _currentZebraService = null;
+                }
+
                 var result = await _bluetoothService.DisconnectAsync();
                 _connectedDevice = null;
                 return result;
@@ -152,7 +170,7 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         }
 
         /// <summary>
-        /// Print text
+        /// Print text (ESC/POS printers)
         /// </summary>
         /// <param name="text">Text to print</param>
         /// <param name="alignment">Text alignment</param>
@@ -162,13 +180,13 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         public async Task<bool> PrintTextAsync(string text, TextAlignment alignment = TextAlignment.Left, bool isBold = false, bool isUnderlined = false)
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.PrintTextAsync(text, alignment, isBold, isUnderlined);
         }
 
         /// <summary>
-        /// Print barcode
+        /// Print barcode (ESC/POS printers)
         /// </summary>
         /// <param name="data">Barcode data</param>
         /// <param name="barcodeType">Barcode type</param>
@@ -178,13 +196,13 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         public async Task<bool> PrintBarcodeAsync(string data, BarcodeType barcodeType = BarcodeType.Code128, int height = 100, int width = 2)
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.PrintBarcodeAsync(data, barcodeType, height, width);
         }
 
         /// <summary>
-        /// Print QR code
+        /// Print QR code (ESC/POS printers)
         /// </summary>
         /// <param name="data">QR code data</param>
         /// <param name="size">QR code size</param>
@@ -193,13 +211,13 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         public async Task<bool> PrintQrCodeAsync(string data, int size = 3, QrCodeErrorLevel errorLevel = QrCodeErrorLevel.L)
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.PrintQrCodeAsync(data, size, errorLevel);
         }
 
         /// <summary>
-        /// Print image
+        /// Print image (ESC/POS printers)
         /// </summary>
         /// <param name="imageData">Image data</param>
         /// <param name="width">Image width</param>
@@ -208,70 +226,197 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         public async Task<bool> PrintImageAsync(byte[] imageData, int width, int height)
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.PrintImageAsync(imageData, width, height);
         }
 
         /// <summary>
-        /// Print line break
+        /// Print line break (ESC/POS printers)
         /// </summary>
-        /// <param name="lines">Number of lines</param>
+        /// <param name="lines">Number of lines to advance</param>
         /// <returns>True if print successful</returns>
         public async Task<bool> PrintLineBreakAsync(int lines = 1)
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.PrintLineBreakAsync(lines);
         }
 
         /// <summary>
-        /// Cut paper
+        /// Cut paper (ESC/POS printers)
         /// </summary>
         /// <returns>True if cut successful</returns>
         public async Task<bool> CutPaperAsync()
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.CutPaperAsync();
         }
 
         /// <summary>
-        /// Print multiple data items
+        /// Print data (ESC/POS printers)
         /// </summary>
-        /// <param name="printData">List of print data</param>
-        /// <returns>True if all items printed successfully</returns>
+        /// <param name="printData">Print data list</param>
+        /// <returns>True if print successful</returns>
         public async Task<bool> PrintDataAsync(List<PrintDataModel> printData)
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.PrintDataAsync(printData);
         }
 
         /// <summary>
-        /// Get printer status
+        /// Print ZPL label (Zebra printers)
+        /// </summary>
+        /// <param name="zplCommands">ZPL commands to print</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZplLabelAsync(string zplCommands)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.PrintLabelAsync(zplCommands);
+        }
+
+        /// <summary>
+        /// Print ZPL label with data (Zebra printers)
+        /// </summary>
+        /// <param name="template">ZPL template</param>
+        /// <param name="data">Data to replace in template</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZplLabelWithDataAsync(string template, Dictionary<string, string> data)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.PrintLabelWithDataAsync(template, data);
+        }
+
+        /// <summary>
+        /// Get printer status (Zebra printers)
         /// </summary>
         /// <returns>Printer status information</returns>
+        public async Task<PrinterStatusModel> GetZebraPrinterStatusAsync()
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.GetPrinterStatusAsync();
+        }
+
+        /// <summary>
+        /// Check if Zebra printer is ready
+        /// </summary>
+        /// <returns>True if printer is ready</returns>
+        public async Task<bool> IsZebraPrinterReadyAsync()
+        {
+            if (_currentZebraService == null)
+                return false;
+
+            return await _currentZebraService.IsPrinterReadyAsync();
+        }
+
+        /// <summary>
+        /// Calibrate Zebra printer
+        /// </summary>
+        /// <returns>True if calibration successful</returns>
+        public async Task<bool> CalibrateZebraPrinterAsync()
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.CalibratePrinterAsync();
+        }
+
+        /// <summary>
+        /// Print test label (Zebra printers)
+        /// </summary>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraTestLabelAsync()
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.PrintTestLabelAsync();
+        }
+
+        /// <summary>
+        /// Set Zebra print darkness
+        /// </summary>
+        /// <param name="darkness">Darkness level (0-30)</param>
+        /// <returns>True if setting successful</returns>
+        public async Task<bool> SetZebraPrintDarknessAsync(int darkness)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.SetPrintDarknessAsync(darkness);
+        }
+
+        /// <summary>
+        /// Set Zebra print speed
+        /// </summary>
+        /// <param name="speed">Print speed (1-14)</param>
+        /// <returns>True if setting successful</returns>
+        public async Task<bool> SetZebraPrintSpeedAsync(int speed)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.SetPrintSpeedAsync(speed);
+        }
+
+        /// <summary>
+        /// Set Zebra label dimensions
+        /// </summary>
+        /// <param name="width">Label width in dots</param>
+        /// <param name="length">Label length in dots</param>
+        /// <returns>True if setting successful</returns>
+        public async Task<bool> SetZebraLabelDimensionsAsync(int width, int length)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.SetLabelDimensionsAsync(width, length);
+        }
+
+        /// <summary>
+        /// Get Zebra printer settings
+        /// </summary>
+        /// <returns>Printer settings</returns>
+        public async Task<PrinterSettingsModel> GetZebraPrinterSettingsAsync()
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.GetPrinterSettingsAsync();
+        }
+
+        /// <summary>
+        /// Get printer status (ESC/POS printers)
+        /// </summary>
+        /// <returns>Printer status</returns>
         public async Task<PrinterStatus> GetPrinterStatusAsync()
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.GetPrinterStatusAsync();
         }
 
         /// <summary>
-        /// Set printer darkness/contrast
+        /// Set printer darkness (ESC/POS printers)
         /// </summary>
-        /// <param name="value">Darkness value (0-255)</param>
-        /// <returns>True if setting applied successfully</returns>
+        /// <param name="value">Darkness value</param>
+        /// <returns>True if setting successful</returns>
         public async Task<bool> SetPrinterDarknessAsync(int value)
         {
             if (_currentPrinterService == null)
-                throw new InvalidOperationException("No printer connected. Call ConnectAsync first.");
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
             return await _currentPrinterService.SetPrinterDarknessAsync(value);
         }
@@ -291,7 +436,7 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         /// <returns>Connected device or null</returns>
         public BluetoothDeviceModel? GetConnectedDevice()
         {
-            return _connectedDevice ?? _bluetoothService.GetConnectedDevice();
+            return _connectedDevice;
         }
 
         /// <summary>
@@ -308,15 +453,16 @@ namespace Maui.Bluetooth.Utils.Shared.Services
 
             // Zebra printer detection
             if (name.Contains("zebra") || name.Contains("zt") || name.Contains("zm") || 
-                name.Contains("zq") || name.Contains("zr") || name.Contains("ztc"))
+                name.Contains("zq") || name.Contains("zr") || name.Contains("zs") ||
+                name.Contains("zxp") || name.Contains("zxi") || name.Contains("zxd"))
             {
                 return PrinterType.Zebra;
             }
 
             // ESC/POS printer detection
-            if (name.Contains("pos") || name.Contains("esc") || name.Contains("thermal") ||
-                name.Contains("receipt") || name.Contains("printer") || name.Contains("pt") ||
-                name.Contains("tp") || name.Contains("brother"))
+            if (name.Contains("esc") || name.Contains("pos") || name.Contains("thermal") ||
+                name.Contains("receipt") || name.Contains("printer") || name.Contains("bt") ||
+                name.Contains("bluetooth") || name.Contains("serial"))
             {
                 return PrinterType.EscPos;
             }
@@ -328,11 +474,15 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         {
             return printerType switch
             {
-                PrinterType.EscPos => _serviceProvider.GetRequiredService<IEscPosPrinterService>(),
-                PrinterType.Zebra => _serviceProvider.GetRequiredService<IZebraPrinterService>(),
-                PrinterType.Generic => _serviceProvider.GetRequiredService<IGenericPrinterService>(),
-                _ => throw new NotSupportedException($"Printer type {printerType} is not supported.")
+                PrinterType.EscPos => _serviceProvider.GetRequiredService<EscPosPrinterService>(),
+                PrinterType.Generic => _serviceProvider.GetRequiredService<GenericPrinterService>(),
+                _ => throw new NotSupportedException($"Printer type {printerType} is not supported for ESC/POS operations.")
             };
+        }
+
+        private IZebraPrinterService CreateZebraPrinterService()
+        {
+            return _serviceProvider.GetRequiredService<ZebraPrinterService>();
         }
 
         private void OnBluetoothConnectionStateChanged(object? sender, ConnectionStateChangedEventArgs e)
@@ -350,16 +500,31 @@ namespace Maui.Bluetooth.Utils.Shared.Services
             PrintJobStatusChanged?.Invoke(this, e);
         }
 
+        private void OnPrinterStatusChanged(object? sender, PrinterStatusChangedEventArgs e)
+        {
+            PrinterStatusChanged?.Invoke(this, e);
+        }
+
         public void Dispose()
         {
             if (!_disposed)
             {
-                _bluetoothService.ConnectionStateChanged -= OnBluetoothConnectionStateChanged;
-                _bluetoothService.DeviceDiscovered -= OnBluetoothDeviceDiscovered;
-
                 if (_currentPrinterService != null)
                 {
                     _currentPrinterService.PrintJobStatusChanged -= OnPrintJobStatusChanged;
+                    _currentPrinterService = null;
+                }
+
+                if (_currentZebraService != null)
+                {
+                    _currentZebraService.PrinterStatusChanged -= OnPrinterStatusChanged;
+                    _currentZebraService = null;
+                }
+
+                if (_bluetoothService != null)
+                {
+                    _bluetoothService.ConnectionStateChanged -= OnBluetoothConnectionStateChanged;
+                    _bluetoothService.DeviceDiscovered -= OnBluetoothDeviceDiscovered;
                 }
 
                 _disposed = true;

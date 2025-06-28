@@ -1,37 +1,118 @@
-using System.Text;
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;
-using TextAlignment = Maui.Bluetooth.Utils.Shared.Models.TextAlignment;
+using System.Text;
 
 namespace Maui.Bluetooth.Utils.Shared.Services
 {
     /// <summary>
-    /// Zebra printer service implementation for ZPL commands
+    /// Zebra printer service implementation
     /// </summary>
     public class ZebraPrinterService : IZebraPrinterService
     {
         private readonly IBluetoothService _bluetoothService;
-        private bool _isInitialized = false;
-        private int _labelWidth = 203;
-        private int _printSpeed = 2;
-        private int _printDarkness = 10;
-        private string _mediaType = "continuous";
-        private string _sensorType = "gap";
+        private PrinterStatusModel _currentStatus;
+        private PrinterSettingsModel _currentSettings;
 
-        public event EventHandler<PrintJobStatusChangedEventArgs>? PrintJobStatusChanged;
+        public event EventHandler<PrinterStatusChangedEventArgs>? PrinterStatusChanged;
 
         public ZebraPrinterService(IBluetoothService bluetoothService)
         {
             _bluetoothService = bluetoothService ?? throw new ArgumentNullException(nameof(bluetoothService));
+            _currentStatus = new PrinterStatusModel();
+            _currentSettings = new PrinterSettingsModel
+            {
+                PrintDarkness = 10,
+                PrintSpeed = 3,
+                LabelWidth = 609, // 4 inch at 203 DPI
+                LabelLength = 609,
+                MediaType = "Continuous",
+                SensorType = "Gap",
+                PrintMode = PrintMode.TearOff,
+                PrintOrientation = PrintOrientation.Normal
+            };
         }
 
-        public async Task<bool> InitializeAsync()
+        public async Task<bool> PrintLabelAsync(string zplCommands)
         {
             try
             {
-                await InitializeZebraAsync();
-                _isInitialized = true;
-                return true;
+                if (!await IsPrinterReadyAsync())
+                {
+                    throw new InvalidOperationException("Printer is not ready");
+                }
+
+                // ZPL komutlarını byte array'e çevir
+                var data = Encoding.UTF8.GetBytes(zplCommands);
+                
+                // Bluetooth üzerinden gönder
+                var result = await _bluetoothService.SendDataAsync(data);
+                
+                if (result)
+                {
+                    // Print status'u güncelle
+                    await UpdatePrinterStatusAsync();
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _currentStatus.ErrorMessage = ex.Message;
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
+                return false;
+            }
+        }
+
+        public async Task<bool> PrintLabelWithDataAsync(string template, Dictionary<string, string> data)
+        {
+            try
+            {
+                var zplCommands = template;
+                
+                // Template'deki placeholder'ları data ile değiştir
+                foreach (var kvp in data)
+                {
+                    zplCommands = zplCommands.Replace($"{{{kvp.Key}}}", kvp.Value);
+                }
+
+                return await PrintLabelAsync(zplCommands);
+            }
+            catch (Exception ex)
+            {
+                _currentStatus.ErrorMessage = ex.Message;
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
+                return false;
+            }
+        }
+
+        public async Task<PrinterStatusModel> GetPrinterStatusAsync()
+        {
+            try
+            {
+                // Zebra printer status komutu gönder
+                var statusCommand = "~HS\r\n";
+                var data = Encoding.UTF8.GetBytes(statusCommand);
+                
+                await _bluetoothService.SendDataAsync(data);
+                
+                // Status response'unu bekle ve parse et
+                await Task.Delay(1000); // Response için bekle
+                
+                return _currentStatus;
+            }
+            catch (Exception ex)
+            {
+                _currentStatus.ErrorMessage = ex.Message;
+                return _currentStatus;
+            }
+        }
+
+        public async Task<bool> IsPrinterReadyAsync()
+        {
+            try
+            {
+                var status = await GetPrinterStatusAsync();
+                return status.IsReady && !status.IsPaused && !status.IsWaitingForLabel && !status.IsWaitingForRibbon && !status.IsWaitingForMedia;
             }
             catch
             {
@@ -39,531 +120,209 @@ namespace Maui.Bluetooth.Utils.Shared.Services
             }
         }
 
-        public async Task<bool> InitializeZebraAsync()
+        public async Task<bool> CalibratePrinterAsync()
         {
-            // ~HS - Host status
-            var initCommand = "~HS";
-            return await SendZplCommandAsync(initCommand);
-        }
-
-        public async Task<bool> SetLabelWidthAsync(int width)
-        {
-            if (!_isInitialized)
-                return false;
-
             try
             {
-                _labelWidth = width;
-                var command = $"^PW{width}";
-                return await SendZplCommandAsync(command);
+                var calibrateCommand = "~JC\r\n";
+                var data = Encoding.UTF8.GetBytes(calibrateCommand);
+                
+                return await _bluetoothService.SendDataAsync(data);
             }
-            catch
+            catch (Exception ex)
             {
+                _currentStatus.ErrorMessage = ex.Message;
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
             }
         }
 
-        public async Task<bool> SetPrintSpeedAsync(int speed)
+        public async Task<bool> PrintTestLabelAsync()
         {
-            if (!_isInitialized)
-                return false;
-
             try
             {
-                _printSpeed = speed;
-                var command = $"^PR{speed}";
-                return await SendZplCommandAsync(command);
+                var testLabel = GenerateTestLabel();
+                return await PrintLabelAsync(testLabel);
             }
-            catch
+            catch (Exception ex)
             {
+                _currentStatus.ErrorMessage = ex.Message;
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
             }
         }
 
         public async Task<bool> SetPrintDarknessAsync(int darkness)
         {
-            if (!_isInitialized)
-                return false;
-
             try
             {
-                _printDarkness = darkness;
-                var command = $"~SD{darkness:D2}";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
+                if (darkness < 0 || darkness > 30)
+                    throw new ArgumentOutOfRangeException(nameof(darkness), "Darkness must be between 0 and 30");
 
-        public async Task<bool> SetMediaTypeAsync(string mediaType)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                _mediaType = mediaType;
-                var command = $"^MT{mediaType}";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> SetSensorTypeAsync(string sensorType)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                _sensorType = sensorType;
-                var command = $"^MM{sensorType}";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintZplTextAsync(string text, int x, int y, string font = "0", int fontSize = 10, int rotation = 0)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FO{x},{y}^A{font}N,{fontSize},{fontSize}^FD{text}^FS";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintZplBarcodeAsync(string data, int x, int y, string barcodeType = "1", int height = 50, int width = 2, int rotation = 0)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FO{x},{y}^BY{width}^BCN,{height},Y,N,N^FD{data}^FS";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintZplQrCodeAsync(string data, int x, int y, int size = 3, string errorLevel = "L", int rotation = 0)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FO{x},{y}^BQN,2,{size}^FD{errorLevel}A,{data}^FS";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintZplImageAsync(byte[] imageData, int x, int y, int width, int height)
-        {
-            if (!_isInitialized || imageData == null)
-                return false;
-
-            try
-            {
-                // Convert image to ZPL format (simplified)
-                var command = $"^FO{x},{y}^GFA,{imageData.Length},{imageData.Length},{width},{height},";
-                await SendZplCommandAsync(command);
+                var command = $"~SD{darkness:D2}\r\n";
+                var data = Encoding.UTF8.GetBytes(command);
                 
-                // Send image data
-                return await _bluetoothService.SendDataAsync(imageData);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintZplLineAsync(int x1, int y1, int x2, int y2, int thickness = 1)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FO{x1},{y1}^GB{x2 - x1},{y2 - y1},{thickness}^FS";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintZplRectangleAsync(int x, int y, int width, int height, int thickness = 1)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FO{x},{y}^GB{width},{height},{thickness}^FS";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintZplCircleAsync(int x, int y, int radius, int thickness = 1)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FO{x},{y}^GC{radius},{thickness}^FS";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> SetFieldOriginAsync(int x, int y)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FO{x},{y}";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> SetFieldSeparatorAsync(char separator)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^FS{separator}";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> SetLabelHomeAsync(int x, int y)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^LH{x},{y}";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintLabelAsync(int copies = 1)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var command = $"^PQ{copies}";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<ZebraPrinterStatus> GetZebraPrinterStatusAsync()
-        {
-            if (!_isInitialized)
-                return new ZebraPrinterStatus();
-
-            try
-            {
-                // ~HS - Host status command
-                var command = "~HS";
-                await SendZplCommandAsync(command);
-
-                // In a real implementation, you would parse the response
-                return new ZebraPrinterStatus
+                var result = await _bluetoothService.SendDataAsync(data);
+                
+                if (result)
                 {
-                    IsOnline = true,
-                    HasPaper = true,
-                    IsCoverOpen = false,
-                    HasError = false,
-                    PaperRemaining = 100,
-                    Temperature = 25,
-                    IsReady = true,
-                    IsPaused = false,
-                    IsPrinting = false,
-                    IsProcessing = false,
-                    IsWaitingForLabel = false,
-                    IsWaitingForRibbon = false,
-                    IsWaitingForMedia = false,
-                    IsWaitingForHeadUp = false,
-                    IsWaitingForRibbonOut = false,
-                    IsWaitingForRibbonIn = false,
-                    IsWaitingForMediaOut = false,
-                    IsWaitingForMediaIn = false,
-                    IsWaitingForHeadDown = false,
-                    IsWaitingForRibbonOut2 = false,
-                    IsWaitingForRibbonIn2 = false,
-                    IsWaitingForMediaOut2 = false,
-                    IsWaitingForMediaIn2 = false,
-                    IsWaitingForHeadDown2 = false,
-                    IsWaitingForRibbonOut3 = false,
-                    IsWaitingForRibbonIn3 = false,
-                    IsWaitingForMediaOut3 = false,
-                    IsWaitingForMediaIn3 = false,
-                    IsWaitingForHeadDown3 = false
-                };
-            }
-            catch
-            {
-                return new ZebraPrinterStatus();
-            }
-        }
-
-        // IPrinterService implementation
-        public async Task<bool> PrintTextAsync(string text, TextAlignment alignment = TextAlignment.Left, bool isBold = false, bool isUnderlined = false)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var x = alignment switch
-                {
-                    TextAlignment.Center => _labelWidth / 2,
-                    TextAlignment.Right => _labelWidth - 10,
-                    _ => 10
-                };
-
-                var font = isBold ? "1" : "0";
-                var fontSize = isBold ? 12 : 10;
-
-                return await PrintZplTextAsync(text, x, 10, font, fontSize);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintBarcodeAsync(string data, BarcodeType barcodeType = BarcodeType.Code128, int height = 100, int width = 2)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var zplBarcodeType = barcodeType switch
-                {
-                    BarcodeType.Code128 => "1",
-                    BarcodeType.Code39 => "2",
-                    BarcodeType.Ean13 => "3",
-                    BarcodeType.Ean8 => "4",
-                    BarcodeType.UpcA => "5",
-                    BarcodeType.UpcE => "6",
-                    BarcodeType.Itf => "7",
-                    BarcodeType.Codabar => "8",
-                    _ => "1"
-                };
-
-                return await PrintZplBarcodeAsync(data, 10, 50, zplBarcodeType, height, width);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintQrCodeAsync(string data, int size = 3, QrCodeErrorLevel errorLevel = QrCodeErrorLevel.L)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                var zplErrorLevel = errorLevel switch
-                {
-                    QrCodeErrorLevel.L => "L",
-                    QrCodeErrorLevel.M => "M",
-                    QrCodeErrorLevel.Q => "Q",
-                    QrCodeErrorLevel.H => "H",
-                    _ => "L"
-                };
-
-                return await PrintZplQrCodeAsync(data, 10, 150, size, zplErrorLevel);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintImageAsync(byte[] imageData, int width, int height)
-        {
-            if (!_isInitialized || imageData == null)
-                return false;
-
-            try
-            {
-                return await PrintZplImageAsync(imageData, 10, 200, width, height);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintLineBreakAsync(int lines = 1)
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                // In ZPL, we typically use field separators for line breaks
-                for (int i = 0; i < lines; i++)
-                {
-                    await SendZplCommandAsync("^FS");
-                }
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> CutPaperAsync()
-        {
-            if (!_isInitialized)
-                return false;
-
-            try
-            {
-                // In ZPL, we use print commands to advance the label
-                var command = "^XZ";
-                return await SendZplCommandAsync(command);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public async Task<bool> PrintDataAsync(List<PrintDataModel> printData)
-        {
-            if (!_isInitialized || printData == null)
-                return false;
-
-            try
-            {
-                // Start label
-                await SendZplCommandAsync("^XA");
-
-                foreach (var data in printData)
-                {
-                    switch (data.Type)
-                    {
-                        case PrintDataType.Text:
-                            await PrintTextAsync(data.Content, data.Alignment, data.IsBold, data.IsUnderlined);
-                            break;
-                        case PrintDataType.Barcode:
-                            await PrintBarcodeAsync(data.Content, data.BarcodeType);
-                            break;
-                        case PrintDataType.QrCode:
-                            await PrintQrCodeAsync(data.Content, 3, data.QrErrorLevel);
-                            break;
-                        case PrintDataType.Image:
-                            if (data.ImageData != null)
-                                await PrintImageAsync(data.ImageData, data.ImageWidth, data.ImageHeight);
-                            break;
-                        case PrintDataType.LineBreak:
-                            await PrintLineBreakAsync(1);
-                            break;
-                        case PrintDataType.Cut:
-                            await CutPaperAsync();
-                            break;
-                    }
+                    _currentSettings.PrintDarkness = darkness;
                 }
 
-                // End label and print
-                await SendZplCommandAsync("^XZ");
-
-                return true;
+                return result;
             }
-            catch
+            catch (Exception ex)
             {
+                _currentStatus.ErrorMessage = ex.Message;
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
             }
         }
 
-        public async Task<PrinterStatus> GetPrinterStatusAsync()
+        public async Task<bool> SetPrintSpeedAsync(int speed)
         {
-            var zebraStatus = await GetZebraPrinterStatusAsync();
-            return zebraStatus;
-        }
-
-        public async Task<bool> SetPrinterDarknessAsync(int value)
-        {
-            return await SetPrintDarknessAsync(value);
-        }
-
-        private async Task<bool> SendZplCommandAsync(string command)
-        {
-            if (!_isInitialized || string.IsNullOrEmpty(command))
-                return false;
-
             try
             {
-                var data = Encoding.ASCII.GetBytes(command);
-                return await _bluetoothService.SendDataAsync(data);
+                if (speed < 1 || speed > 14)
+                    throw new ArgumentOutOfRangeException(nameof(speed), "Speed must be between 1 and 14");
+
+                var command = $"^PR{speed:D2}\r\n";
+                var data = Encoding.UTF8.GetBytes(command);
+                
+                var result = await _bluetoothService.SendDataAsync(data);
+                
+                if (result)
+                {
+                    _currentSettings.PrintSpeed = speed;
+                }
+
+                return result;
             }
-            catch
+            catch (Exception ex)
             {
+                _currentStatus.ErrorMessage = ex.Message;
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
             }
+        }
+
+        public async Task<bool> SetLabelDimensionsAsync(int width, int length)
+        {
+            try
+            {
+                var command = $"^PW{width}\r\n^LL{length}\r\n";
+                var data = Encoding.UTF8.GetBytes(command);
+                
+                var result = await _bluetoothService.SendDataAsync(data);
+                
+                if (result)
+                {
+                    _currentSettings.LabelWidth = width;
+                    _currentSettings.LabelLength = length;
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _currentStatus.ErrorMessage = ex.Message;
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
+                return false;
+            }
+        }
+
+        public async Task<PrinterSettingsModel> GetPrinterSettingsAsync()
+        {
+            try
+            {
+                // Printer settings komutları gönder
+                var settingsCommands = new[]
+                {
+                    "~SD\r\n", // Print darkness
+                    "^PR\r\n", // Print speed
+                    "^PW\r\n", // Print width
+                    "^LL\r\n"  // Label length
+                };
+
+                foreach (var command in settingsCommands)
+                {
+                    var data = Encoding.UTF8.GetBytes(command);
+                    await _bluetoothService.SendDataAsync(data);
+                    await Task.Delay(100); // Response için bekle
+                }
+
+                return _currentSettings;
+            }
+            catch (Exception ex)
+            {
+                _currentStatus.ErrorMessage = ex.Message;
+                return _currentSettings;
+            }
+        }
+
+        private async Task UpdatePrinterStatusAsync()
+        {
+            var previousStatus = _currentStatus;
+            _currentStatus = await GetPrinterStatusAsync();
+            
+            if (!previousStatus.Equals(_currentStatus))
+            {
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(previousStatus, _currentStatus));
+            }
+        }
+
+        private string GenerateTestLabel()
+        {
+            var sb = new StringBuilder();
+            
+            // Test label ZPL komutları
+            sb.AppendLine("^XA"); // Start of label
+            sb.AppendLine("^FO50,50^A0N,50,50^FDZebra Test Label^FS"); // Text
+            sb.AppendLine("^FO50,120^BY3^BCN,100,Y,N,N^FD123456789^FS"); // Barcode
+            sb.AppendLine("^FO50,250^A0N,30,30^FDDate: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "^FS"); // Date
+            sb.AppendLine("^XZ"); // End of label
+            
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Generate ZPL commands for text
+        /// </summary>
+        public static string GenerateTextZpl(string text, int x, int y, string font = "0", int fontSize = 10, int rotation = 0)
+        {
+            return $"^FO{x},{y}^A{font}N,{fontSize},{fontSize}^FD{text}^FS";
+        }
+
+        /// <summary>
+        /// Generate ZPL commands for barcode
+        /// </summary>
+        public static string GenerateBarcodeZpl(string data, int x, int y, string barcodeType = "1", int height = 50, int width = 2, int rotation = 0)
+        {
+            return $"^FO{x},{y}^BY{width}^BCN,{height},Y,N,N^FD{data}^FS";
+        }
+
+        /// <summary>
+        /// Generate ZPL commands for QR code
+        /// </summary>
+        public static string GenerateQrCodeZpl(string data, int x, int y, int size = 3, string errorLevel = "L", int rotation = 0)
+        {
+            return $"^FO{x},{y}^BQN,2,{size},{errorLevel}^FD{data}^FS";
+        }
+
+        /// <summary>
+        /// Generate ZPL commands for line
+        /// </summary>
+        public static string GenerateLineZpl(int x1, int y1, int x2, int y2, int thickness = 1)
+        {
+            return $"^FO{x1},{y1}^GB{x2 - x1},{y2 - y1},{thickness}^FS";
+        }
+
+        /// <summary>
+        /// Generate ZPL commands for rectangle
+        /// </summary>
+        public static string GenerateRectangleZpl(int x, int y, int width, int height, int thickness = 1)
+        {
+            return $"^FO{x},{y}^GB{width},{height},{thickness}^FS";
         }
     }
-} 
+}

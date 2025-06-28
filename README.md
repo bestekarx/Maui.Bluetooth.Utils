@@ -10,6 +10,7 @@ Cross-platform Bluetooth printer library for .NET MAUI supporting ESC/POS and Ze
 - **Comprehensive API**: Full printer control with text, barcodes, QR codes, and images
 - **Event-driven**: Real-time connection and print job status updates
 - **Type-safe**: Strongly typed interfaces and models
+- **ZPL Support**: Complete Zebra Programming Language support for label printing
 
 ## Installation
 
@@ -65,6 +66,7 @@ public partial class MainPage : ContentPage
         _printerManager.ConnectionStateChanged += OnConnectionStateChanged;
         _printerManager.DeviceDiscovered += OnDeviceDiscovered;
         _printerManager.PrintJobStatusChanged += OnPrintJobStatusChanged;
+        _printerManager.PrinterStatusChanged += OnPrinterStatusChanged; // Zebra printers
     }
 
     private async void ScanButton_Clicked(object sender, EventArgs e)
@@ -137,7 +139,126 @@ public partial class MainPage : ContentPage
     {
         Console.WriteLine($"Print job {e.JobId}: {e.Status} ({e.Progress}%)");
     }
+
+    private void OnPrinterStatusChanged(object? sender, PrinterStatusChangedEventArgs e)
+    {
+        Console.WriteLine($"Printer status: {e.CurrentStatus.IsReady}");
+    }
 }
+```
+
+## Zebra Printer Support
+
+### Connect to Zebra Printer
+
+```csharp
+var zebraDevice = new BluetoothDeviceModel
+{
+    Name = "Zebra ZT230",
+    Address = "00:11:22:33:44:55",
+    PrinterType = PrinterType.Zebra
+};
+
+var connected = await _printerManager.ConnectAsync(zebraDevice);
+```
+
+### Print ZPL Labels
+
+```csharp
+// Simple ZPL label
+var zplLabel = @"^XA
+^FO50,50^A0N,50,50^FDHello Zebra^FS
+^FO50,120^BY3^BCN,100,Y,N,N^FD123456789^FS
+^XZ";
+
+await _printerManager.PrintZplLabelAsync(zplLabel);
+
+// Using ZebraUtils for easier ZPL generation
+using Maui.Bluetooth.Utils.Shared.Utils;
+
+var label = ZebraUtils.GenerateLabel(
+    ZebraUtils.Text("Product Label", 50, 50, "0", 40),
+    ZebraUtils.Barcode("ABC123", 50, 120, "1", 80, 3),
+    ZebraUtils.QrCode("https://example.com", 50, 220, 5, "M"),
+    ZebraUtils.Rectangle(40, 40, 400, 300, 2)
+);
+
+await _printerManager.PrintZplLabelAsync(label);
+```
+
+### Print Labels with Data
+
+```csharp
+// ZPL template with placeholders
+var template = @"^XA
+^FO50,50^A0N,40,40^FDProduct: {ProductName}^FS
+^FO50,100^A0N,30,30^FDPrice: ${Price}^FS
+^FO50,150^BY3^BCN,80,Y,N,N^FD{SKU}^FS
+^XZ";
+
+var data = new Dictionary<string, string>
+{
+    { "ProductName", "Sample Product" },
+    { "Price", "29.99" },
+    { "SKU", "SKU123456" }
+};
+
+await _printerManager.PrintZplLabelWithDataAsync(template, data);
+```
+
+### Zebra Printer Settings
+
+```csharp
+// Set print darkness (0-30)
+await _printerManager.SetZebraPrintDarknessAsync(15);
+
+// Set print speed (1-14)
+await _printerManager.SetZebraPrintSpeedAsync(3);
+
+// Set label dimensions
+await _printerManager.SetZebraLabelDimensionsAsync(609, 609); // 4" x 4" at 203 DPI
+
+// Get printer status
+var status = await _printerManager.GetZebraPrinterStatusAsync();
+if (status.IsReady)
+{
+    Console.WriteLine("Printer is ready");
+}
+
+// Check if printer is ready
+if (await _printerManager.IsZebraPrinterReadyAsync())
+{
+    await _printerManager.PrintZplLabelAsync(zplLabel);
+}
+
+// Calibrate printer
+await _printerManager.CalibrateZebraPrinterAsync();
+
+// Print test label
+await _printerManager.PrintZebraTestLabelAsync();
+```
+
+### ZebraUtils Helper Methods
+
+```csharp
+using Maui.Bluetooth.Utils.Shared.Utils;
+
+// Generate common ZPL elements
+var textElement = ZebraUtils.Text("Hello", 50, 50, "0", 30);
+var barcodeElement = ZebraUtils.Barcode("123456", 50, 100, "1", 60, 2);
+var qrElement = ZebraUtils.QrCode("https://example.com", 50, 180, 4, "M");
+var lineElement = ZebraUtils.Line(50, 250, 350, 250, 2);
+var rectElement = ZebraUtils.Rectangle(40, 40, 360, 220, 1);
+
+// Generate complete labels
+var simpleLabel = ZebraUtils.GenerateTextLabel("Simple Text", 40);
+var barcodeLabel = ZebraUtils.GenerateBarcodeLabel("123456789", "Product SKU");
+var qrLabel = ZebraUtils.GenerateQrCodeLabel("https://example.com", "Scan for more info");
+
+// Print the labels
+await _printerManager.PrintZplLabelAsync(simpleLabel);
+await _printerManager.PrintZplLabelAsync(barcodeLabel);
+await _printerManager.PrintZplLabelAsync(qrLabel);
 ```
 
 ## Advanced Usage
@@ -215,11 +336,11 @@ var printData = new List<PrintDataModel>
 await _printerManager.PrintDataAsync(printData);
 ```
 
-## Platform-Specific Setup
+## Platform Configuration
 
 ### Android
 
-Add the following permissions to your `Platforms/Android/AndroidManifest.xml`:
+Add the following permissions to your `AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.BLUETOOTH" />
@@ -232,7 +353,7 @@ Add the following permissions to your `Platforms/Android/AndroidManifest.xml`:
 
 ### iOS
 
-Add the following keys to your `Platforms/iOS/Info.plist`:
+Add the following keys to your `Info.plist`:
 
 ```xml
 <key>NSBluetoothAlwaysUsageDescription</key>
@@ -241,58 +362,54 @@ Add the following keys to your `Platforms/iOS/Info.plist`:
 <string>This app uses Bluetooth to connect to printers</string>
 ```
 
-## API Reference
+## Error Handling
 
-### Core Classes
+```csharp
+try
+{
+    await _printerManager.PrintTextAsync("Hello World!");
+}
+catch (BluetoothConnectionException ex)
+{
+    // Handle connection errors
+    await DisplayAlert("Connection Error", ex.Message, "OK");
+}
+catch (PrinterException ex)
+{
+    // Handle printer errors
+    await DisplayAlert("Printer Error", ex.Message, "OK");
+}
+catch (Exception ex)
+{
+    // Handle other errors
+    await DisplayAlert("Error", ex.Message, "OK");
+}
+```
 
-- `BluetoothPrinterManager`: Main printer manager class
-- `IBluetoothService`: Platform-specific Bluetooth service interface
-- `IEscPosPrinterService`: ESC/POS printer service interface
-- `IZebraPrinterService`: Zebra printer service interface
-- `IGenericPrinterService`: Generic printer service interface
+## Troubleshooting
 
-### Models
+### Common Issues
 
-- `BluetoothDeviceModel`: Bluetooth device information
-- `PrintDataModel`: Print data item
-- `PrinterStatus`: Printer status information
-- `ConnectionState`: Connection state enumeration
-- `PrinterType`: Printer type enumeration
+1. **Bluetooth not available**: Ensure Bluetooth is enabled and permissions are granted
+2. **Device not found**: Check if the device is paired and in range
+3. **Connection failed**: Verify the device address and try reconnecting
+4. **Print not working**: Check printer status and ensure it's ready
 
-### Events
+### Debug Logging
 
-- `ConnectionStateChanged`: Fired when connection state changes
-- `DeviceDiscovered`: Fired when a new device is discovered
-- `PrintJobStatusChanged`: Fired when print job status changes
+Enable debug logging to troubleshoot issues:
 
-## Supported Printer Types
-
-### ESC/POS Printers
-- Thermal receipt printers
-- POS printers
-- Label printers with ESC/POS support
-
-### Zebra Printers
-- ZPL-compatible label printers
-- Industrial label printers
-- RFID printers
-
-### Generic Printers
-- Any Bluetooth printer with raw data support
-- Custom printer protocols
+```csharp
+builder.Services.AddBluetoothPrinterServices(options =>
+{
+    options.EnableDebugLogging = true;
+});
+```
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Support
-
-For support and questions, please open an issue on GitHub or contact the maintainers. 
+This project is licensed under the MIT License - see the LICENSE file for details. 

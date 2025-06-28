@@ -32,6 +32,9 @@ namespace Maui.Bluetooth.Utils.Shared.Services
             services.AddTransient<IEscPosPrinterService, EscPosPrinterService>();
             services.AddTransient<IZebraPrinterService, ZebraPrinterService>();
             services.AddTransient<IGenericPrinterService, GenericPrinterService>();
+            services.AddTransient<EscPosPrinterService>();
+            services.AddTransient<ZebraPrinterService>();
+            services.AddTransient<GenericPrinterService>();
 
             return services;
         }
@@ -72,6 +75,9 @@ namespace Maui.Bluetooth.Utils.Shared.Services
             services.AddTransient<IEscPosPrinterService, EscPosPrinterService>();
             services.AddTransient<IZebraPrinterService, ZebraPrinterService>();
             services.AddTransient<IGenericPrinterService, GenericPrinterService>();
+            services.AddTransient<EscPosPrinterService>();
+            services.AddTransient<ZebraPrinterService>();
+            services.AddTransient<GenericPrinterService>();
 
             return services;
         }
@@ -105,6 +111,9 @@ namespace Maui.Bluetooth.Utils.Shared.Services
             services.AddTransient<IEscPosPrinterService, TEscPosService>();
             services.AddTransient<IZebraPrinterService, TZebraService>();
             services.AddTransient<IGenericPrinterService, TGenericService>();
+            services.AddTransient<EscPosPrinterService>();
+            services.AddTransient<ZebraPrinterService>();
+            services.AddTransient<GenericPrinterService>();
 
             return services;
         }
