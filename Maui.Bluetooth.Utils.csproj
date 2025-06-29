@@ -64,4 +64,9 @@
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="obj\Release\net8.0-android\" />
+    <Folder Include="obj\Release\net8.0-ios\" />
+  </ItemGroup>
+
 </Project> 
