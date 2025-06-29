@@ -188,6 +188,32 @@ namespace Maui.Bluetooth.Utils.Platforms.iOS
             }
         }
 
+        public async Task<byte[]> ReadDataAsync(int timeout = 1000)
+        {
+            if (_connectedPeripheral == null || _readCharacteristic == null)
+                return Array.Empty<byte>();
+            try
+            {
+                var tcs = new TaskCompletionSource<byte[]>();
+                EventHandler<CBCharacteristicEventArgs> handler = (s, e) =>
+                {
+                    if (e.Characteristic == _readCharacteristic && e.Characteristic.Value != null)
+                        tcs.TrySetResult(e.Characteristic.Value.ToArray());
+                };
+                _connectedPeripheral.UpdatedCharacterteristicValue += handler;
+                _connectedPeripheral.ReadValue(_readCharacteristic);
+                var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(timeout));
+                _connectedPeripheral.UpdatedCharacterteristicValue -= handler;
+                if (completedTask == tcs.Task)
+                    return tcs.Task.Result;
+                return Array.Empty<byte>();
+            }
+            catch
+            {
+                return Array.Empty<byte>();
+            }
+        }
+
         public ConnectionState GetConnectionState() => _state;
         public BluetoothDeviceModel? GetConnectedDevice() => _connectedDevice;
 

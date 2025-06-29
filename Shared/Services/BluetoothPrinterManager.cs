@@ -1,5 +1,6 @@
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;
+using Maui.Bluetooth.Utils.Shared.Utils;
 using TextAlignment = Maui.Bluetooth.Utils.Shared.Models.TextAlignment;
 
 namespace Maui.Bluetooth.Utils.Shared.Services
@@ -280,6 +281,188 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
 
             return await _currentZebraService.PrintLabelAsync(zplCommands);
+        }
+
+        /// <summary>
+        /// Print CPCL label (Zebra printers)
+        /// </summary>
+        /// <param name="cpclCommands">CPCL commands to print</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintCpclLabelAsync(string cpclCommands)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print text label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="text">Text to print</param>
+        /// <param name="x">X position (default: 30)</param>
+        /// <param name="y">Y position (default: 40)</param>
+        /// <param name="font">Font number (default: 4)</param>
+        /// <param name="fontSize">Font size (default: 0)</param>
+        /// <param name="feedLines">Number of feed lines (default: 5)</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraTextLabelAsync(string text, int x = 30, int y = 40, int font = 4, int fontSize = 0, int feedLines = 5)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+            var cpclCommands = ZebraCpclUtils.GenerateTextLabel(text, x, y, font, fontSize, feedLines);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print barcode label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="barcode">Barcode data</param>
+        /// <param name="label">Optional text label</param>
+        /// <param name="x">X position (default: 30)</param>
+        /// <param name="y">Y position (default: 40)</param>
+        /// <param name="barcodeType">Barcode type (default: 128)</param>
+        /// <param name="height">Barcode height (default: 50)</param>
+        /// <param name="width">Barcode width (default: 1)</param>
+        /// <param name="font">Font number (default: 4)</param>
+        /// <param name="fontSize">Font size (default: 0)</param>
+        /// <param name="labelAbove">Whether label is above barcode (default: false)</param>
+        /// <param name="feedLines">Number of feed lines (default: 5)</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraBarcodeLabelAsync(string barcode, string label = "", int x = 30, int y = 40, int barcodeType = 128, int height = 50, int width = 1, int font = 4, int fontSize = 0, bool labelAbove = false, int feedLines = 5)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+            var cpclCommands = ZebraCpclUtils.GenerateBarcodeLabel(barcode, label, x, y, barcodeType, height, width, font, fontSize, labelAbove, feedLines);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print QR code label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="qrData">QR code data</param>
+        /// <param name="label">Optional text label</param>
+        /// <param name="x">X position (default: 50)</param>
+        /// <param name="y">Y position (default: 100)</param>
+        /// <param name="size">QR code size (default: 2)</param>
+        /// <param name="errorLevel">Error correction level (default: M)</param>
+        /// <param name="font">Font number (default: 4)</param>
+        /// <param name="fontSize">Font size (default: 0)</param>
+        /// <param name="labelYOffset">Y position offset for label (default: -60)</param>
+        /// <param name="feedLines">Number of feed lines (default: 5)</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraQrLabelAsync(string qrData, string label = "", int x = 50, int y = 100, int size = 2, string errorLevel = "M", int font = 4, int fontSize = 0, int labelYOffset = -60, int feedLines = 5)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+            var cpclCommands = ZebraCpclUtils.GenerateQrLabel(qrData, label, x, y, size, errorLevel, font, fontSize, labelYOffset, feedLines);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print receipt-style label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="title">Receipt title</param>
+        /// <param name="items">List of items to print</param>
+        /// <param name="total">Total amount</param>
+        /// <param name="x">X position (default: 30)</param>
+        /// <param name="y">Y position (default: 40)</param>
+        /// <param name="font">Font number (default: 4)</param>
+        /// <param name="fontSize">Font size (default: 0)</param>
+        /// <param name="lineHeight">Line height (default: 40)</param>
+        /// <param name="feedLines">Number of feed lines (default: 5)</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraReceiptLabelAsync(string title, List<(string Name, decimal Price)> items, decimal total, int x = 30, int y = 40, int font = 4, int fontSize = 0, int lineHeight = 40, int feedLines = 5)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+            var cpclCommands = ZebraCpclUtils.GenerateReceiptLabel(title, items, total, x, y, font, fontSize, lineHeight, feedLines);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print address label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="name">Recipient name</param>
+        /// <param name="address">Street address</param>
+        /// <param name="city">City</param>
+        /// <param name="postalCode">Postal code</param>
+        /// <param name="country">Country</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraAddressLabelAsync(string name, string address, string city, string postalCode, string country)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            var cpclCommands = ZebraCpclUtils.GenerateAddressLabel(name, address, city, postalCode, country);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print product label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="productName">Product name</param>
+        /// <param name="productCode">Product code/barcode</param>
+        /// <param name="price">Product price</param>
+        /// <param name="description">Product description</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraProductLabelAsync(string productName, string productCode, decimal price, string description = "")
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            var cpclCommands = ZebraCpclUtils.GenerateProductLabel(productName, productCode, price, description);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print shipping label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="trackingNumber">Tracking number</param>
+        /// <param name="fromAddress">Sender address</param>
+        /// <param name="toAddress">Recipient address</param>
+        /// <param name="weight">Package weight</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraShippingLabelAsync(string trackingNumber, string fromAddress, string toAddress, string weight)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            var cpclCommands = ZebraCpclUtils.GenerateShippingLabel(trackingNumber, fromAddress, toAddress, weight);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print inventory label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="itemCode">Item code</param>
+        /// <param name="itemName">Item name</param>
+        /// <param name="quantity">Quantity</param>
+        /// <param name="location">Storage location</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraInventoryLabelAsync(string itemCode, string itemName, int quantity, string location)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+
+            var cpclCommands = ZebraCpclUtils.GenerateInventoryLabel(itemCode, itemName, quantity, location);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
+        }
+
+        /// <summary>
+        /// Print custom label using CPCL (Zebra printers)
+        /// </summary>
+        /// <param name="elements">List of CPCL elements to include</param>
+        /// <param name="labelWidth">Label width in dots (default: 400)</param>
+        /// <param name="labelLength">Label length in dots (default: 600)</param>
+        /// <param name="feedLines">Number of feed lines (default: 5)</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintZebraCustomLabelAsync(List<string> elements, int labelWidth = 400, int labelLength = 600, int feedLines = 5)
+        {
+            if (_currentZebraService == null)
+                throw new InvalidOperationException("No Zebra printer connected. Call ConnectAsync first.");
+            var cpclCommands = ZebraCpclUtils.GenerateCustomLabel(elements, labelWidth, labelLength, feedLines);
+            return await _currentZebraService.PrintLabelAsync(cpclCommands);
         }
 
         /// <summary>

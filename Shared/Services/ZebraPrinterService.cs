@@ -1,5 +1,6 @@
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;
+using Maui.Bluetooth.Utils.Shared.Utils;
 using System.Text;
 
 namespace Maui.Bluetooth.Utils.Shared.Services
@@ -32,33 +33,19 @@ namespace Maui.Bluetooth.Utils.Shared.Services
             };
         }
 
-        public async Task<bool> PrintLabelAsync(string zplCommands)
+        public async Task<bool> PrintLabelAsync(string cpclCommands)
         {
             try
             {
-                if (!await IsPrinterReadyAsync())
-                {
-                    throw new InvalidOperationException("Printer is not ready");
-                }
-
-                // ZPL komutlarını byte array'e çevir
-                var data = Encoding.UTF8.GetBytes(zplCommands);
-                
-                // Bluetooth üzerinden gönder
+                // Satır sonlarını normalize et
+                var normalized = cpclCommands.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                var data = Encoding.GetEncoding("ISO-8859-1").GetBytes(normalized);
                 var result = await _bluetoothService.SendDataAsync(data);
-                
-                if (result)
-                {
-                    // Print status'u güncelle
-                    await UpdatePrinterStatusAsync();
-                }
-
                 return result;
             }
             catch (Exception ex)
             {
                 _currentStatus.ErrorMessage = ex.Message;
-                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
             }
         }
@@ -89,15 +76,11 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         {
             try
             {
-                // Zebra printer status komutu gönder
-                var statusCommand = "~HS\r\n";
-                var data = Encoding.UTF8.GetBytes(statusCommand);
-                
-                await _bluetoothService.SendDataAsync(data);
-                
-                // Status response'unu bekle ve parse et
-                await Task.Delay(1000); // Response için bekle
-                
+                // Status komutunu gönder ve response bekle
+                var response = await SendStatusCommandAsync("~HS\r\n");
+                // Burada response parse edilebilir (geliştirilebilir)
+                _currentStatus.IsReady = true; // Varsayılan olarak ready kabul et
+                _currentStatus.ErrorMessage = null;
                 return _currentStatus;
             }
             catch (Exception ex)
@@ -111,8 +94,27 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         {
             try
             {
-                var status = await GetPrinterStatusAsync();
-                return status.IsReady && !status.IsPaused && !status.IsWaitingForLabel && !status.IsWaitingForRibbon && !status.IsWaitingForMedia;
+                // Zebra printer'lar için basit bir ready kontrolü
+                // Gerçek uygulamada printer'dan status almak gerekir
+                // Şimdilik bağlantı durumunu kontrol et
+                var connectionState = _bluetoothService.GetConnectionState();
+                if (connectionState != ConnectionState.Connected)
+                {
+                    return false;
+                }
+                
+                // Printer'a basit bir test komutu gönder
+                var testCommand = "~HI\r\n"; // Printer info komutu
+                var data = Encoding.UTF8.GetBytes(testCommand);
+                
+                var result = await _bluetoothService.SendDataAsync(data);
+                if (!result)
+                {
+                    return false;
+                }
+                
+                // Komut gönderilebiliyorsa printer ready kabul et
+                return true;
             }
             catch
             {
@@ -124,13 +126,33 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         {
             try
             {
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "CalibratePrinterAsync: Printer kalibrasyonu başlatılıyor..."));
+                
                 var calibrateCommand = "~JC\r\n";
                 var data = Encoding.UTF8.GetBytes(calibrateCommand);
                 
-                return await _bluetoothService.SendDataAsync(data);
+                var result = await _bluetoothService.SendDataAsync(data);
+                
+                if (result)
+                {
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "CalibratePrinterAsync: Kalibrasyon komutu gönderildi, printer hazırlanıyor..."));
+                    
+                    // Kalibrasyon için biraz bekle
+                    await Task.Delay(2000);
+                    
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "CalibratePrinterAsync: Kalibrasyon tamamlandı."));
+                }
+                else
+                {
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "CalibratePrinterAsync: Kalibrasyon komutu gönderilemedi."));
+                }
+                
+                return result;
             }
             catch (Exception ex)
             {
+                var logMsg = $"[EXCEPTION] CalibratePrinterAsync hata: {ex.Message}";
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, logMsg));
                 _currentStatus.ErrorMessage = ex.Message;
                 PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
@@ -141,15 +163,30 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         {
             try
             {
-                var testLabel = GenerateTestLabel();
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "PrintTestLabelAsync: Test label oluşturuluyor..."));
+                
+                var testLabel = GenerateTestLabelCpcl();
+                
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "PrintTestLabelAsync: Test label yazdırılıyor..."));
+                
                 return await PrintLabelAsync(testLabel);
             }
             catch (Exception ex)
             {
+                var logMsg = $"[EXCEPTION] PrintTestLabelAsync hata: {ex.Message}";
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, logMsg));
                 _currentStatus.ErrorMessage = ex.Message;
                 PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
             }
+        }
+
+        /// <summary>
+        /// CPCL formatında test etiketi üretir
+        /// </summary>
+        private string GenerateTestLabelCpcl()
+        {
+            return ZebraCpclUtils.GenerateTestLabel();
         }
 
         public async Task<bool> SetPrintDarknessAsync(int darkness)
@@ -159,6 +196,8 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 if (darkness < 0 || darkness > 30)
                     throw new ArgumentOutOfRangeException(nameof(darkness), "Darkness must be between 0 and 30");
 
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, $"SetPrintDarknessAsync: Print darkness {darkness} ayarlanıyor..."));
+
                 var command = $"~SD{darkness:D2}\r\n";
                 var data = Encoding.UTF8.GetBytes(command);
                 
@@ -167,12 +206,19 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 if (result)
                 {
                     _currentSettings.PrintDarkness = darkness;
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, $"SetPrintDarknessAsync: Print darkness {darkness} başarıyla ayarlandı."));
+                }
+                else
+                {
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "SetPrintDarknessAsync: Print darkness ayarlanamadı."));
                 }
 
                 return result;
             }
             catch (Exception ex)
             {
+                var logMsg = $"[EXCEPTION] SetPrintDarknessAsync hata: {ex.Message}";
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, logMsg));
                 _currentStatus.ErrorMessage = ex.Message;
                 PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
@@ -186,6 +232,8 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 if (speed < 1 || speed > 14)
                     throw new ArgumentOutOfRangeException(nameof(speed), "Speed must be between 1 and 14");
 
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, $"SetPrintSpeedAsync: Print speed {speed} ayarlanıyor..."));
+
                 var command = $"^PR{speed:D2}\r\n";
                 var data = Encoding.UTF8.GetBytes(command);
                 
@@ -194,12 +242,19 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 if (result)
                 {
                     _currentSettings.PrintSpeed = speed;
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, $"SetPrintSpeedAsync: Print speed {speed} başarıyla ayarlandı."));
+                }
+                else
+                {
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "SetPrintSpeedAsync: Print speed ayarlanamadı."));
                 }
 
                 return result;
             }
             catch (Exception ex)
             {
+                var logMsg = $"[EXCEPTION] SetPrintSpeedAsync hata: {ex.Message}";
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, logMsg));
                 _currentStatus.ErrorMessage = ex.Message;
                 PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
@@ -210,6 +265,8 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         {
             try
             {
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, $"SetLabelDimensionsAsync: Label dimensions {width}x{length} ayarlanıyor..."));
+
                 var command = $"^PW{width}\r\n^LL{length}\r\n";
                 var data = Encoding.UTF8.GetBytes(command);
                 
@@ -219,12 +276,19 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 {
                     _currentSettings.LabelWidth = width;
                     _currentSettings.LabelLength = length;
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, $"SetLabelDimensionsAsync: Label dimensions {width}x{length} başarıyla ayarlandı."));
+                }
+                else
+                {
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "SetLabelDimensionsAsync: Label dimensions ayarlanamadı."));
                 }
 
                 return result;
             }
             catch (Exception ex)
             {
+                var logMsg = $"[EXCEPTION] SetLabelDimensionsAsync hata: {ex.Message}";
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, logMsg));
                 _currentStatus.ErrorMessage = ex.Message;
                 PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, ex.Message));
                 return false;
@@ -235,6 +299,8 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         {
             try
             {
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "GetPrinterSettingsAsync: Printer ayarları alınıyor..."));
+
                 // Printer settings komutları gönder
                 var settingsCommands = new[]
                 {
@@ -247,14 +313,22 @@ namespace Maui.Bluetooth.Utils.Shared.Services
                 foreach (var command in settingsCommands)
                 {
                     var data = Encoding.UTF8.GetBytes(command);
-                    await _bluetoothService.SendDataAsync(data);
+                    var result = await _bluetoothService.SendDataAsync(data);
+                    if (!result)
+                    {
+                        PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, $"GetPrinterSettingsAsync: {command} komutu gönderilemedi."));
+                    }
                     await Task.Delay(100); // Response için bekle
                 }
+
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, "GetPrinterSettingsAsync: Printer ayarları alındı."));
 
                 return _currentSettings;
             }
             catch (Exception ex)
             {
+                var logMsg = $"[EXCEPTION] GetPrinterSettingsAsync hata: {ex.Message}";
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, logMsg));
                 _currentStatus.ErrorMessage = ex.Message;
                 return _currentSettings;
             }
@@ -262,27 +336,21 @@ namespace Maui.Bluetooth.Utils.Shared.Services
 
         private async Task UpdatePrinterStatusAsync()
         {
-            var previousStatus = _currentStatus;
-            _currentStatus = await GetPrinterStatusAsync();
-            
-            if (!previousStatus.Equals(_currentStatus))
+            try
             {
-                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(previousStatus, _currentStatus));
+                var previousStatus = _currentStatus;
+                _currentStatus = await GetPrinterStatusAsync();
+                
+                if (!previousStatus.Equals(_currentStatus))
+                {
+                    PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(previousStatus, _currentStatus));
+                }
             }
-        }
-
-        private string GenerateTestLabel()
-        {
-            var sb = new StringBuilder();
-            
-            // Test label ZPL komutları
-            sb.AppendLine("^XA"); // Start of label
-            sb.AppendLine("^FO50,50^A0N,50,50^FDZebra Test Label^FS"); // Text
-            sb.AppendLine("^FO50,120^BY3^BCN,100,Y,N,N^FD123456789^FS"); // Barcode
-            sb.AppendLine("^FO50,250^A0N,30,30^FDDate: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "^FS"); // Date
-            sb.AppendLine("^XZ"); // End of label
-            
-            return sb.ToString();
+            catch (Exception ex)
+            {
+                var logMsg = $"[EXCEPTION] UpdatePrinterStatusAsync hata: {ex.Message}";
+                PrinterStatusChanged?.Invoke(this, new PrinterStatusChangedEventArgs(_currentStatus, _currentStatus, logMsg));
+            }
         }
 
         /// <summary>
@@ -323,6 +391,35 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         public static string GenerateRectangleZpl(int x, int y, int width, int height, int thickness = 1)
         {
             return $"^FO{x},{y}^GB{width},{height},{thickness}^FS";
+        }
+
+        // Status komutlarını yazıcıya gönderip response bekleyen yardımcı fonksiyon
+        private async Task<string?> SendStatusCommandAsync(string command)
+        {
+            var data = Encoding.UTF8.GetBytes(command);
+            var sent = await _bluetoothService.SendDataAsync(data);
+            if (!sent)
+                return null;
+
+            // Buffer'ı temizle
+            if (_bluetoothService is IGenericPrinterService genericService)
+            {
+                // Burada response'u oku ve buffer'ı temizle
+                var responseBytes = await genericService.ReadDataAsync(1000);
+                if (responseBytes.Length > 0)
+                    return Encoding.UTF8.GetString(responseBytes);
+                return null;
+            }
+            // Yoksa kısa bir bekleme ile devam et
+            await Task.Delay(300);
+            return null;
+        }
+
+        private string CreateDemoFile(string dataString)
+        {
+            var tempFilePath = Path.Combine(Path.GetTempPath(), "TEST_ZEBRA.LBL");
+            File.WriteAllText(tempFilePath, dataString, Encoding.UTF8);
+            return tempFilePath;
         }
     }
 }

@@ -143,6 +143,41 @@ namespace Maui.Bluetooth.Utils.Platforms.Android
             }
         }
 
+        public async Task<byte[]> ReadDataAsync(int timeout = 1000)
+        {
+            if (_socket == null || !_socket.IsConnected)
+                return Array.Empty<byte>();
+            try
+            {
+                var buffer = new byte[1024];
+                var stream = _socket.InputStream;
+                var bytesRead = 0;
+                var totalRead = 0;
+                var start = DateTime.UtcNow;
+                using (var ms = new MemoryStream())
+                {
+                    while ((DateTime.UtcNow - start).TotalMilliseconds < timeout && stream.IsDataAvailable())
+                    {
+                        bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                        if (bytesRead > 0)
+                        {
+                            ms.Write(buffer, 0, bytesRead);
+                            totalRead += bytesRead;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    return ms.ToArray();
+                }
+            }
+            catch
+            {
+                return Array.Empty<byte>();
+            }
+        }
+
         public ConnectionState GetConnectionState() => _state;
         public BluetoothDeviceModel? GetConnectedDevice() => _connectedDevice;
     }
