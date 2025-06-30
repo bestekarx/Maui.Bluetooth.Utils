@@ -6,7 +6,7 @@
 
 **Cross-platform Bluetooth printer library for .NET MAUI**
 
-[![NuGet](https://img.shields.io/nuget/v/Maui.Bluetooth.Utils.svg)](https://www.nuget.org/packages/Maui.Bluetooth.Utils)
+[![NuGet](https://img.shields.io/nuget/v/Ble.Print.Utils.svg)](https://www.nuget.org/packages/Ble.Print.Utils)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-green.svg)](https://dotnet.microsoft.com/apps/maui)
 
