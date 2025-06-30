@@ -119,5 +119,56 @@ namespace Maui.Bluetooth.Utils.Shared.Interfaces
         /// <param name="mode">Print mode</param>
         /// <returns>True if print successful</returns>
         Task<bool> PrintBitmapAsync(byte[] imageData, int width, int height, int mode = 0);
+
+        /// <summary>
+        /// ESC/POS cihazları için özel barcode yazdırma metodu
+        /// </summary>
+        /// <param name="data">Barcode data</param>
+        /// <param name="barcodeType">Barcode type</param>
+        /// <param name="height">Barcode height</param>
+        /// <param name="width">Barcode width</param>
+        /// <returns>True if print successful</returns>
+        Task<bool> PrintBarcodeEscPosAsync(string data, BarcodeType barcodeType = BarcodeType.Code128, int height = 100, int width = 2);
+
+        /// <summary>
+        /// ESC/POS cihazları için QR kod yazdırma metodu
+        /// </summary>
+        /// <param name="data">QR code data</param>
+        /// <param name="size">QR code size (1-8)</param>
+        /// <param name="errorLevel">Error correction level</param>
+        /// <returns>True if print successful</returns>
+        Task<bool> PrintQrCodeEscPosAsync(string data, int size = 3, QrCodeErrorLevel errorLevel = QrCodeErrorLevel.L);
+
+        /// <summary>
+        /// ESC/POS cihazları için basit barcode yazdırma metodu
+        /// </summary>
+        /// <param name="data">Barcode data</param>
+        /// <param name="barcodeType">Barcode type</param>
+        /// <returns>True if print successful</returns>
+        Task<bool> PrintSimpleBarcodeAsync(string data, BarcodeType barcodeType = BarcodeType.Code128);
+
+        /// <summary>
+        /// ESC/POS cihazları için basit QR kod yazdırma metodu
+        /// </summary>
+        /// <param name="data">QR code data</param>
+        /// <param name="size">QR code size (1-8)</param>
+        /// <returns>True if print successful</returns>
+        Task<bool> PrintSimpleQrCodeAsync(string data, int size = 6);
+
+        /// <summary>
+        /// ESC/POS cihazları için alternatif QR kod yazdırma metodu
+        /// </summary>
+        /// <param name="data">QR code data</param>
+        /// <param name="size">QR code size (1-8)</param>
+        /// <returns>True if print successful</returns>
+        Task<bool> PrintQrCodeAlternativeAsync(string data, int size = 6);
+
+        /// <summary>
+        /// ESC/POS cihazları için çok basit QR kod yazdırma metodu
+        /// </summary>
+        /// <param name="data">QR code data</param>
+        /// <param name="size">QR code size (1-8)</param>
+        /// <returns>True if print successful</returns>
+        Task<bool> PrintQrCodeVerySimpleAsync(string data, int size = 4);
     }
 } 

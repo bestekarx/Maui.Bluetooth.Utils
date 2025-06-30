@@ -1,6 +1,7 @@
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;
 using Maui.Bluetooth.Utils.Shared.Utils;
+using Microsoft.Extensions.DependencyInjection;
 using TextAlignment = Maui.Bluetooth.Utils.Shared.Models.TextAlignment;
 
 namespace Maui.Bluetooth.Utils.Shared.Services
@@ -209,12 +210,92 @@ namespace Maui.Bluetooth.Utils.Shared.Services
         /// <param name="size">QR code size</param>
         /// <param name="errorLevel">Error correction level</param>
         /// <returns>True if print successful</returns>
-        public async Task<bool> PrintQrCodeAsync(string data, int size = 3, QrCodeErrorLevel errorLevel = QrCodeErrorLevel.L)
+        public async Task<bool> PrintQrCodeAsync(string data, int size = 6)
         {
             if (_currentPrinterService == null)
                 throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
 
-            return await _currentPrinterService.PrintQrCodeAsync(data, size, errorLevel);
+            return await _currentPrinterService.PrintQrCodeAsync(data, size);
+        }
+
+        /// <summary>
+        /// Print simple barcode for ESC/POS printers (improved compatibility)
+        /// </summary>
+        /// <param name="data">Barcode data</param>
+        /// <param name="barcodeType">Barcode type</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintSimpleBarcodeAsync(string data, BarcodeType barcodeType = BarcodeType.Code128)
+        {
+            if (_currentPrinterService == null)
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
+
+            if (_currentPrinterService is IEscPosPrinterService escPosService)
+            {
+                return await escPosService.PrintSimpleBarcodeAsync(data, barcodeType);
+            }
+
+            // Fallback to regular method
+            return await _currentPrinterService.PrintBarcodeAsync(data, barcodeType);
+        }
+
+        /// <summary>
+        /// Print simple QR code for ESC/POS printers (improved compatibility)
+        /// </summary>
+        /// <param name="data">QR code data</param>
+        /// <param name="size">QR code size</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintSimpleQrCodeAsync(string data, int size = 6)
+        {
+            if (_currentPrinterService == null)
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
+
+            if (_currentPrinterService is IEscPosPrinterService escPosService)
+            {
+                return await escPosService.PrintSimpleQrCodeAsync(data, size);
+            }
+
+            // Fallback to regular method
+            return await _currentPrinterService.PrintQrCodeAsync(data, size);
+        }
+
+        /// <summary>
+        /// Print alternative QR code for ESC/POS printers (more reliable)
+        /// </summary>
+        /// <param name="data">QR code data</param>
+        /// <param name="size">QR code size</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintQrCodeAlternativeAsync(string data, int size = 6)
+        {
+            if (_currentPrinterService == null)
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
+
+            if (_currentPrinterService is IEscPosPrinterService escPosService)
+            {
+                return await escPosService.PrintQrCodeAlternativeAsync(data, size);
+            }
+
+            // Fallback to regular method
+            return await _currentPrinterService.PrintQrCodeAsync(data, size);
+        }
+
+        /// <summary>
+        /// Print very simple QR code for ESC/POS printers (most compatible)
+        /// </summary>
+        /// <param name="data">QR code data</param>
+        /// <param name="size">QR code size</param>
+        /// <returns>True if print successful</returns>
+        public async Task<bool> PrintQrCodeVerySimpleAsync(string data, int size = 4)
+        {
+            if (_currentPrinterService == null)
+                throw new InvalidOperationException("No ESC/POS printer connected. Call ConnectAsync first.");
+
+            if (_currentPrinterService is IEscPosPrinterService escPosService)
+            {
+                return await escPosService.PrintQrCodeVerySimpleAsync(data, size);
+            }
+
+            // Fallback to regular method
+            return await _currentPrinterService.PrintQrCodeAsync(data, size);
         }
 
         /// <summary>

@@ -1,5 +1,6 @@
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;
+using Microsoft.Extensions.DependencyInjection;
 using TextAlignment = Maui.Bluetooth.Utils.Shared.Models.TextAlignment;
 
 namespace Maui.Bluetooth.Utils.Shared.Services
