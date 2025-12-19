@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Android.Bluetooth;
 using Java.Util;
 using Maui.Bluetooth.Utils.Shared.Interfaces;

@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Maui.Bluetooth.Utils.Shared.Models;
 
 namespace Maui.Bluetooth.Utils.Shared.Interfaces

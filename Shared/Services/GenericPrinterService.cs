@@ -1,4 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using TextAlignment = Maui.Bluetooth.Utils.Shared.Models.TextAlignment;
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;

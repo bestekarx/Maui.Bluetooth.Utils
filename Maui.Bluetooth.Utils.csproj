@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0-android;net8.0-ios</TargetFrameworks>
+    <TargetFrameworks>net9.0-android;net9.0-ios;net10.0-android;net10.0-ios</TargetFrameworks>
     <UseMaui>true</UseMaui>
     <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -9,7 +9,7 @@
     <Nullable>enable</Nullable>
     
     <!-- iOS Build Settings -->
-    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">11.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.2</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
     
     <!-- NuGet Package Information -->
@@ -28,19 +28,35 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
-  <!-- iOS-specific PropertyGroup -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-ios'">
+  <!-- iOS-specific PropertyGroup for .NET 9 -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0-ios'">
     <MtouchLink>None</MtouchLink>
     <MtouchDebug>true</MtouchDebug>
     <MtouchNoSymbolStrip>true</MtouchNoSymbolStrip>
     <MtouchFastDev>true</MtouchFastDev>
   </PropertyGroup>
 
+  <!-- iOS-specific PropertyGroup for .NET 10 -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+    <MtouchLink>None</MtouchLink>
+    <MtouchDebug>true</MtouchDebug>
+    <MtouchNoSymbolStrip>true</MtouchNoSymbolStrip>
+    <MtouchFastDev>true</MtouchFastDev>
+  </PropertyGroup>
+
+
+  <!-- Package references -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.3" />
-    <PackageReference Include="Microsoft.Maui.Essentials" Version="8.0.100" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageReference Include="System.Text.Json" Version="9.0.1" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="9.0.0" Condition="'$(TargetFramework)' == 'net9.0-android' OR '$(TargetFramework)' == 'net9.0-ios'" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" Condition="'$(TargetFramework)' == 'net10.0-android' OR '$(TargetFramework)' == 'net10.0-ios'" />
+
+    <PackageReference Include="Microsoft.Maui.Essentials" Version="9.0.0" Condition="'$(TargetFramework)' == 'net9.0-android' OR '$(TargetFramework)' == 'net9.0-ios'" />
+    <PackageReference Include="Microsoft.Maui.Essentials" Version="10.0.0" Condition="'$(TargetFramework)' == 'net10.0-android' OR '$(TargetFramework)' == 'net10.0-ios'" />
+
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" Condition="'$(TargetFramework)' == 'net9.0-android' OR '$(TargetFramework)' == 'net9.0-ios'" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" Condition="'$(TargetFramework)' == 'net10.0-android' OR '$(TargetFramework)' == 'net10.0-ios'" />
+
+
     <PackageReference Include="Zebra.Printer.SDK" Version="3.0.3337" />
   </ItemGroup>
 
@@ -49,13 +65,23 @@
     <Compile Include="Shared\**\*.cs" />
   </ItemGroup>
 
-  <!-- Android-specific files -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-android'">
+  <!-- Android-specific files for .NET 9 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0-android'">
     <Compile Include="Platforms\Android\**\*.cs" />
   </ItemGroup>
 
-  <!-- iOS-specific files -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-ios'">
+  <!-- iOS-specific files for .NET 9 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0-ios'">
+    <Compile Include="Platforms\iOS\**\*.cs" />
+  </ItemGroup>
+
+  <!-- Android-specific files for .NET 10 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <Compile Include="Platforms\Android\**\*.cs" />
+  </ItemGroup>
+
+  <!-- iOS-specific files for .NET 10 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
     <Compile Include="Platforms\iOS\**\*.cs" />
   </ItemGroup>
 
@@ -65,8 +91,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="obj\Release\net8.0-android\" />
-    <Folder Include="obj\Release\net8.0-ios\" />
+    <Folder Include="obj\Release\net9.0-android\" />
+    <Folder Include="obj\Release\net9.0-ios\" />
+    <Folder Include="obj\Release\net10.0-android\" />
+    <Folder Include="obj\Release\net10.0-ios\" />
   </ItemGroup>
 
 </Project> 

@@ -1,7 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using Maui.Bluetooth.Utils.Shared.Interfaces;
 using Maui.Bluetooth.Utils.Shared.Models;
 using Maui.Bluetooth.Utils.Shared.Utils;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace Maui.Bluetooth.Utils.Shared.Services
 {
