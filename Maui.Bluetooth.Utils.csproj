@@ -2,11 +2,11 @@
 
   <PropertyGroup>
     <TargetFrameworks>net9.0-android;net9.0-ios;net10.0-android;net10.0-ios</TargetFrameworks>
-    <UseMaui>true</UseMaui>
     <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
     
     <!-- iOS Build Settings -->
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.2</SupportedOSPlatformVersion>
@@ -21,28 +21,13 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/bestekarx/Maui.Bluetooth.Utils</PackageProjectUrl>
     <RepositoryUrl>https://github.com/bestekarx/Maui.Bluetooth.Utils</RepositoryUrl>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageIcon>logo.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
-  <!-- iOS-specific PropertyGroup for .NET 9 -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0-ios'">
-    <MtouchLink>None</MtouchLink>
-    <MtouchDebug>true</MtouchDebug>
-    <MtouchNoSymbolStrip>true</MtouchNoSymbolStrip>
-    <MtouchFastDev>true</MtouchFastDev>
-  </PropertyGroup>
-
-  <!-- iOS-specific PropertyGroup for .NET 10 -->
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
-    <MtouchLink>None</MtouchLink>
-    <MtouchDebug>true</MtouchDebug>
-    <MtouchNoSymbolStrip>true</MtouchNoSymbolStrip>
-    <MtouchFastDev>true</MtouchFastDev>
-  </PropertyGroup>
 
 
   <!-- Package references -->
@@ -90,11 +75,13 @@
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="obj\Release\net9.0-android\" />
-    <Folder Include="obj\Release\net9.0-ios\" />
-    <Folder Include="obj\Release\net10.0-android\" />
-    <Folder Include="obj\Release\net10.0-ios\" />
-  </ItemGroup>
+  <!-- Exclude AAR files from package - not needed for .NET MAUI libraries -->
+  <!-- AAR files are only for Java/Kotlin libraries, not .NET MAUI -->
+  <Target Name="ExcludeAarFromPackage" BeforeTargets="_GetPackageFiles">
+    <ItemGroup>
+      <_PackageFilesToExclude Include="@(_PackageFiles)" Condition="$([System.String]::Copy('%(Identity)').EndsWith('.aar'))" />
+      <_PackageFiles Remove="@(_PackageFilesToExclude)" />
+    </ItemGroup>
+  </Target>
 
 </Project> 
